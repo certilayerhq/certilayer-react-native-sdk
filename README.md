@@ -5,7 +5,7 @@
 CertiLayer's React Native SDK captures touch behavior and screen
 transitions, then streams a behavioral feature vector to your CertiLayer
 account so you can verify real human sessions on mobile — no CAPTCHA, no
-device fingerprinting, no PII.
+device fingerprinting, and no typed content.
 
 [![npm version](https://img.shields.io/npm/v/@certilayer/react-native.svg)](https://www.npmjs.com/package/@certilayer/react-native)
 
@@ -136,8 +136,12 @@ document-level equivalent to the DOM's `document.addEventListener`.
 | `navigation` | Screen-to-screen transitions and time spent per screen, via `trackScreen()` |
 
 Signals are batched, converted into a behavioral feature vector on-device,
-and sent to your CertiLayer ingestion endpoint. No PII is captured — no
-names, emails, or device identifiers.
+and sent to your CertiLayer ingestion endpoint.
+
+**What is never captured:** this SDK has no keyboard collector. It does not
+read `TextInput` contents, key presses, or any text a user types. It does
+not collect names, emails, or device identifiers. The ingestion gateway
+also receives the request IP address for security and rate limiting.
 
 ---
 
