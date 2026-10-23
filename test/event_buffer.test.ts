@@ -28,3 +28,12 @@ describe('EventBuffer (React Native)', () => {
     expect(buf.size).toBe(2);
   });
 });
+
+describe('EventBuffer dropped counter', () => {
+  it('counts signals discarded when full', () => {
+    const buf = new EventBuffer(2);
+    for (let i = 0; i < 5; i++) buf.push(sig(i));
+    expect(buf.dropped).toBe(3);
+    expect(buf.size).toBe(2);
+  });
+});

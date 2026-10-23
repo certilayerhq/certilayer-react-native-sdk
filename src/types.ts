@@ -15,6 +15,10 @@ export interface CertiLayerConfig {
   flushIntervalMs?: number
   /** Max signals per batch. @default 50 */
   batchSize?: number
+  /** Min gap (ms) between size-triggered sends. @default 2000 */
+  minFlushIntervalMs?: number
+  /** Max signals held in memory. @default batchSize * 6 */
+  maxBufferSize?: number
   debug?: boolean
 }
 

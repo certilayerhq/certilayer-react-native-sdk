@@ -89,6 +89,8 @@ interface CertiLayerConfig {
   endpoint?: string         // default: 'https://ingest.certilayer.net'
   flushIntervalMs?: number  // default: 5000
   batchSize?: number        // default: 50
+  minFlushIntervalMs?: number // default: 2000
+  maxBufferSize?: number    // default: 6 x batchSize
   debug?: boolean           // default: false
 }
 ```
@@ -99,6 +101,8 @@ interface CertiLayerConfig {
 | `endpoint`        | `https://ingest.certilayer.net` | Override only for self-hosted gateways.    |
 | `flushIntervalMs` | `5000`                          | How often buffered signals are sent, in ms.|
 | `batchSize`       | `50`                            | Max signals per batch.                     |
+| `minFlushIntervalMs` | `2000`                       | Min gap between size-triggered sends, in ms. |
+| `maxBufferSize`   | `6 × batchSize`                 | Max signals kept in memory.                |
 | `debug`           | `false`                         | Logs init and dropped batches to the console. |
 
 ---
@@ -184,8 +188,20 @@ If your app has its own in-app theme switch, pass `theme` explicitly.
   call `stop()`, the SDK immediately tries to send what it has. The OS may
   suspend the app before a request completes, so delivery in that moment is
   best-effort.
-- While the device is offline the in-memory buffer is bounded; the oldest
-  signals are dropped when it is full.
+- A batch is also sent as soon as `batchSize` signals are buffered (at most
+  once every 2 seconds), so continuous interaction is not limited to the
+  periodic timer.
+- The in-memory buffer holds up to `6 × batchSize` signals (300 by default).
+  When it is full the oldest signals are dropped, for example during very
+  fast continuous touch movement or while the device is offline. With
+  `debug: true` the SDK logs how many were dropped.
+- On a `429`, the SDK waits for the server's `Retry-After` plus up to 20% random
+  jitter, so many devices do not retry at the same moment.
+- Both limits are configurable: `minFlushIntervalMs` (default `2000`) sets the
+  minimum gap between size-triggered sends, and `maxBufferSize` (default
+  `6 × batchSize`) sets how many signals are kept in memory.
+- On a `429`, the SDK waits for the server's `Retry-After` plus up to 20% random
+  jitter, so many devices do not retry at the same moment.
 
 ---
 

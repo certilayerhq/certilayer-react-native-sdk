@@ -29,6 +29,8 @@ const MAX_ATTEMPTS = 6
 const BASE_DELAY_MS = 1_000
 const MAX_DELAY_MS = 60_000
 const MAX_FORCE_ROUNDS = 10 // batches sent in one forced flush (stop / background)
+const MIN_FLUSH_INTERVAL_MS = 2_000 // size-triggered sends: at most one per 2s
+const BUFFER_CAPACITY_FACTOR = 6    // buffer holds batchSize x 6 signals
 
 interface PendingBatch {
   payload: EventBatch // built once, resent byte-identical on retry
@@ -46,6 +48,7 @@ let _sessionStartTs = 0
 
 let _pending: PendingBatch | null = null // kept until the server confirms
 let _retryAt = 0
+let _lastSendAt = 0
 let _flushing: Promise<void> | null = null // single-flight guard
 let _touchHandlers: ReturnType<typeof makeTouchHandlers> | null = null
 
@@ -60,6 +63,17 @@ function uuidv4(): string {
 function emit(signal: RawSignal): void {
   if (!_running || !_buffer) return
   _buffer.push(signal)
+  flushIfFull()
+}
+
+/** Send as soon as a full batch is buffered; rate-limited and backoff-aware. */
+function flushIfFull(): void {
+  const cfg = _config
+  if (!cfg || !_buffer || _flushing) return
+  if (_buffer.size < cfg.batchSize) return
+  const now = Date.now()
+  if (now < _retryAt || now - _lastSendAt < cfg.minFlushIntervalMs) return
+  void flush()
 }
 
 function backoffMs(attempt: number): number {
@@ -89,11 +103,15 @@ async function doFlush(force: boolean): Promise<void> {
       if (!_buffer || _buffer.isEmpty) return
       const signals = _buffer.drain(cfg.batchSize)
       if (signals.length === 0) return
+      if (cfg.debug && _buffer.dropped > 0) {
+        console.warn(`[CertiLayer] ${_buffer.dropped} signals dropped so far (buffer full)`)
+      }
       _pending = { payload: buildBatch(signals), id: uuidv4(), attempts: 0 }
     }
     if (!force && Date.now() < _retryAt) return
 
     const pending = _pending
+    _lastSendAt = Date.now()
     const res = await sendBatch(cfg.endpoint, cfg.apiKey, pending.payload, pending.id)
 
     if (res.ok) {
@@ -109,7 +127,9 @@ async function doFlush(force: boolean): Promise<void> {
         _pending = null
         _retryAt = 0
       } else {
-        _retryAt = Date.now() + (res.retryAfterMs ?? backoffMs(pending.attempts))
+        _retryAt = Date.now() + (res.retryAfterMs !== undefined
+          ? res.retryAfterMs * (1 + Math.random() * 0.2)
+          : backoffMs(pending.attempts))
       }
     } else {
       if (cfg.debug) console.warn('[CertiLayer] batch rejected, not retrying', res.status)
@@ -149,12 +169,15 @@ function init(config: CertiLayerConfig): void {
     endpoint: config.endpoint ?? DEFAULT_ENDPOINT,
     flushIntervalMs: config.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS,
     batchSize: config.batchSize ?? DEFAULT_BATCH_SIZE,
+    minFlushIntervalMs: config.minFlushIntervalMs ?? MIN_FLUSH_INTERVAL_MS,
+    maxBufferSize: config.maxBufferSize
+      ?? (config.batchSize ?? DEFAULT_BATCH_SIZE) * BUFFER_CAPACITY_FACTOR,
     debug: config.debug ?? false,
   }
 
   _sessionId = uuidv4()
   _sessionStartTs = Date.now()
-  _buffer = new EventBuffer(_config.batchSize * 2)
+  _buffer = new EventBuffer(_config.maxBufferSize)
   _retryAt = 0
   _running = true
 
