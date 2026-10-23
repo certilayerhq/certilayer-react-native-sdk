@@ -1,10 +1,9 @@
 /**
  * @file capture/screen.ts
  * @layer L1 — React Native SDK
- * @description Screen-transition tracking. Unlike the Web SDK (which can
- * intercept the browser History API globally), React Native has no
- * universal navigation hook — the app must call trackScreen() explicitly,
- * typically from its navigation library's onStateChange callback.
+ * @description Screen-transition tracking. React Native has no universal
+ * navigation hook — the app must call trackScreen() explicitly, typically
+ * from its navigation library's onStateChange callback.
  */
 
 import type { RawSignal, ScreenSignal } from '../types'
@@ -24,15 +23,17 @@ export function initScreenTracking(emit: Emitter, initialScreen = 'unknown'): vo
 /**
  * Report a screen transition. Call this from your navigation library's
  * state-change callback (e.g. React Navigation's onStateChange).
+ * Empty names and repeats of the current screen are ignored.
  *
- * @example
- * <NavigationContainer onStateChange={(state) => {
- *   const routeName = state?.routes[state.index]?.name
- *   if (routeName) CertiLayer.trackScreen(routeName)
- * }}>
+ * With nested navigators, resolve the leaf route first:
+ *   const getLeaf = (s: any): string | undefined =>
+ *     s?.routes?.[s.index ?? 0]?.state ? getLeaf(s.routes[s.index ?? 0].state)
+ *                                      : s?.routes?.[s.index ?? 0]?.name
  */
 export function trackScreen(screenName: string): void {
   if (!emitter) return
+  if (!screenName || typeof screenName !== 'string') return
+  if (screenName === currentScreen) return
 
   const ts = Date.now()
   const duration_ms = screenEntryTs > 0 ? ts - screenEntryTs : 0
